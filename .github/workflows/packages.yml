@@ -1,42 +1,54 @@
-name: Build all core packages
+name: Build dnsmasq-full (Xiaomi AX3600)
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/packages.yml'
-      - 'config/**'
-      - 'include/**'
-      - 'package/**'
-      - 'target/linux/generic/**'
-      - 'toolchain/**'
-  push:
-    paths:
-      - '.github/workflows/packages.yml'
-      - 'config/**'
-      - 'include/**'
-      - 'package/**'
-      - 'target/linux/generic/**'
-      - 'toolchain/**'
-    branches-ignore:
-      - master
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  workflow_dispatch:  # Trigger manually
 
 jobs:
-  build-packages:
-    name: Build all core packages for selected target
-    permissions:
-      contents: read
-      packages: read
-      actions: write
-    secrets:
-      ccache_s3_endpoint: ${{ secrets.CCACHE_S3_ENDPOINT }}
-      ccache_s3_bucket: ${{ secrets.CCACHE_S3_BUCKET }}
-      ccache_s3_access_key: ${{ secrets.CCACHE_S3_ACCESS_KEY }}
-      ccache_s3_secret_key: ${{ secrets.CCACHE_S3_SECRET_KEY }}
-    uses: openwrt/actions-shared-workflows/.github/workflows/packages.yml@main
+  build:
+    runs-on: ubuntu-22.04  # Use Ubuntu 22.04 runner as build environment
+    steps:
+      - name: Checkout OpenWrt source
+        uses: actions/checkout@v3  # Check out the forked OpenWrt repository (23.05+)
+      
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev \
+            zlib1g-dev gawk flex git subversion gettext quilt libssl-dev xsltproc \
+            libxml-parser-perl python3-distutils unzip file wget bc
+          # (Include other OpenWrt prerequisites as needed)
+      
+      - name: Workaround build tool issues (libdeflate-gzip, openssl)
+        run: |
+          # Create symlinks to avoid common build errors on Ubuntu 22.04
+          sudo ln -sf $(which gzip) /usr/bin/libdeflate-gzip
+          sudo ln -sf $(which openssl) /usr/bin/openssl
+          
+      - name: Update OpenWrt feeds
+        run: |
+          ./scripts/feeds update -a   # Pull in all feeds (packages)
+          ./scripts/feeds install -a  # Install all feed packages
+      
+      - name: Configure build for Xiaomi AX3600 (dnsmasq-full with IPSet)
+        run: |
+          # Set target to Xiaomi AX3600 (Qualcomm IPQ807x) [oai_citation_attribution:0‡github.com](https://github.com/yaya131/AX6-AX3600_Almighty-Edition_Config/blob/main/AX3600-5.15.config#:~:text=CONFIG_TARGET_ipq807x%3Dy)
+          echo "CONFIG_TARGET_ipq807x=y" > .config
+          echo "CONFIG_TARGET_ipq807x_generic=y" >> .config
+          echo "CONFIG_TARGET_ipq807x_generic_DEVICE_xiaomi_ax3600=y" >> .config
+          # Enable dnsmasq-full package with IPSet support; disable default dnsmasq [oai_citation_attribution:1‡github.com](https://github.com/yaya131/AX6-AX3600_Almighty-Edition_Config/blob/main/AX3600-5.15.config#:~:text=CONFIG_PACKAGE_dnsmasq%20is%20not%20set)
+          echo "CONFIG_PACKAGE_dnsmasq-full=y" >> .config
+          echo "CONFIG_PACKAGE_dnsmasq_full_ipset=y" >> .config
+          echo "CONFIG_PACKAGE_dnsmasq=n" >> .config
+          # Generate default config for all other options
+          make defconfig  # Expands the minimal .config into a complete configuration
+      
+      - name: Compile dnsmasq-full package
+        run: |
+          # Build only the dnsmasq-full package (with above configuration)
+          make -j$(nproc) package/dnsmasq-full/compile V=s
+      
+      - name: Upload dnsmasq-full .ipk artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: dnsmasq-full_ipk
+          path: bin/packages/**/*dnsmasq-full*.ipk  # Path to the built .ipk package
