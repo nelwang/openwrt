@@ -53,7 +53,7 @@ jobs:
 
       # 6. Upload the built .ipk as an artifact
       - name: Upload dnsmasq-full .ipk artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dnsmasq-full-ipset-package
           path: bin/packages/**/dnsmasq-full*ipk
