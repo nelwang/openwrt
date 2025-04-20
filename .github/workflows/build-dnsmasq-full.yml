@@ -1,0 +1,59 @@
+name: Build dnsmasq-full (IPSet Enabled) for AX3600
+on:
+  push:
+    branches: [ main, master, openwrt-23.05 ]   # Adjust to your default or specific branch
+  workflow_dispatch:    # allow manual triggering
+
+jobs:
+  build_dnsmasq_full:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Check out the code
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      # 2. Set up build dependencies (Ubuntu)
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc g++ git-core flex gawk \
+              libncurses5-dev libssl-dev bc unzip wget python3-distutils \
+              python3-dev file rsync subversion swig
+          # (The above includes common packages: GCC, make, gawk, ncurses, SSL, etc.)
+
+      # 3. Update and install OpenWrt feeds
+      - name: Update OpenWrt feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      # 4. Configure target and package selections
+      - name: Configure OpenWrt for AX3600 dnsmasq-full
+        run: |
+          # If you have a preconfigured .config in the repo, copy it. Otherwise, create one:
+          # Set target system (Qualcommax IPQ807x) and device (Xiaomi AX3600)
+          echo "CONFIG_TARGET_qualcommax_ipq807x=y" >> .config
+          echo "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax3600=y" >> .config
+          # Enable dnsmasq-full and disable base dnsmasq
+          echo "CONFIG_PACKAGE_dnsmasq=y" >> .config              # ensure symbol exists for next line
+          sed -i 's/CONFIG_PACKAGE_dnsmasq=y/CONFIG_PACKAGE_dnsmasq=n/' .config
+          echo "CONFIG_PACKAGE_dnsmasq-full=y" >> .config
+          # Enable IPSet support in dnsmasq-full
+          echo "CONFIG_PACKAGE_dnsmasq_full_ipset=y" >> .config
+          # (Optional: ensure nftset support as well, if desired)
+          echo "CONFIG_PACKAGE_dnsmasq_full_nftset=y" >> .config
+          # Expand minimal config to include defaults and dependencies
+          make defconfig
+
+      # 5. Build only the dnsmasq-full package (with parallel jobs)
+      - name: Compile dnsmasq-full package
+        run: |
+          make package/dnsmasq/compile -j$(nproc) V=sc
+        # The above will compile dnsmasq (including dnsmasq-full variant) for the target
+
+      # 6. Upload the built .ipk as an artifact
+      - name: Upload dnsmasq-full .ipk artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: dnsmasq-full-ipset-package
+          path: bin/packages/**/dnsmasq-full*ipk
