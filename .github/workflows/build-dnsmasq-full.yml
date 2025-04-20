@@ -35,10 +35,10 @@ jobs:
       - name: Update and install OpenWrt feeds
         run: |
           # Update all feeds to get the latest package definitions
-         ./scripts/feeds update -a
+          ./scripts/feeds update -a
           # Install the 'dnsmasq' package definition from the feeds.
           # This makes the dnsmasq package (and its variants like dnsmasq-full) available for configuration.
-         ./scripts/feeds install dnsmasq # [14]
+          ./scripts/feeds install dnsmasq # [14]
 
       # Step 4: Configure OpenWrt build for AX3600 and dnsmasq-full (iptables)
       # This step creates the.config file non-interactively
