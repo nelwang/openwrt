@@ -49,6 +49,7 @@ jobs:
           mkdir -p staging_dir/host/bin
           ln -s $(which openssl) staging_dir/host/bin/openssl
           ln -s $(which gzip) staging_dir/host/bin/libdeflate-gzip
+          ln -s $(which sed) staging_dir/host/bin/sed
           
       # 5. Build only the dnsmasq-full package (with parallel jobs)
       - name: Compile dnsmasq-full package
