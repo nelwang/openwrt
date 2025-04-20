@@ -1,108 +1,61 @@
-#.github/workflows/build-dnsmasq.yml
-name: Build dnsmasq-full for Xiaomi AX3600 (OpenWrt 24.10)
+# GitHub Actions workflow to build the dnsmasq-full package for Xiaomi AX3600
+# This uses the OpenWrt 24.10 branch with IPSet support enabled
+name: Build dnsmasq-full (Xiaomi AX3600)
 
-# Trigger manually from the Actions tab
 on:
-  workflow_dispatch: # Allows manual triggering [2, 18]
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   build:
-    # Use Ubuntu 22.04 LTS as the build environment
-    runs-on: ubuntu-22.04 # Specify Ubuntu 22.04 runner [11, 16]
-
+    runs-on: ubuntu-22.04  # Use Ubuntu 22.04 runner
     steps:
-      # Step 1: Check out the source code
-      - name: Checkout OpenWrt source code
+      - name: Checkout OpenWrt source
         uses: actions/checkout@v4
-        # Assumes the workflow runs on the target branch (e.g., openwrt-24.10 based fork)
-        # Add 'ref: your-branch-name' if needed to specify a branch
+        # Check out the repository (fork of OpenWrt 24.10 branch)
 
-      # Step 2: Install OpenWrt build system prerequisites
-      - name: Install OpenWrt build prerequisites
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          # Install all potentially required packages for OpenWrt build on Ubuntu 22.04
-          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-            # Consolidated list [11, 15, 16, 21, 22, 24]
-          # Clean apt cache
-          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get install -y build-essential ccache libncurses5-dev libncursesw5-dev \
+              zlib1g-dev gawk flex quilt bison libelf-dev libssl-dev openssl xsltproc \
+              libxml-parser-perl wget python3-distutils python3-setuptools python3-dev \
+              git subversion swig time
+        # Ensure all required host packages are installed for the build
 
-      # Step 3: Update and install OpenWrt package feeds
       - name: Update and install OpenWrt feeds
         run: |
-          # Update all feeds to get the latest package definitions
           ./scripts/feeds update -a
-          # Install the 'dnsmasq' package definition from the feeds.
-          # This makes the dnsmasq package (and its variants like dnsmasq-full) available for configuration.
-          ./scripts/feeds install dnsmasq # [14]
+          ./scripts/feeds install -a
+        # Pull in all package feeds (including dnsmasq-full)
 
-      # Step 4: Configure OpenWrt build for AX3600 and dnsmasq-full (iptables)
-      # This step creates the.config file non-interactively
-      - name: Configure OpenWrt build for AX3600 and dnsmasq-full (iptables)
+      - name: Configure target and packages
         run: |
-          # Start with a clean slate or a minimal config
-          # Select the target system, subtarget, and profile for Xiaomi AX3600
-          echo "CONFIG_TARGET_qualcommax=y" >.config
-          echo "CONFIG_TARGET_qualcommax_ipq807x=y" >>.config
-          echo "CONFIG_TARGET_qualcommax_ipq807x_DEVICE_xiaomi_ax3600=y" >>.config
-          # Generate initial dependencies based on target
+          # Set the target system to Qualcomm IPQ807x (Xiaomi AX3600)
+          echo "CONFIG_TARGET_ipq807x=y" > .config
+          echo "CONFIG_TARGET_ipq807x_generic=y" >> .config
+          echo "CONFIG_TARGET_ipq807x_generic_DEVICE_xiaomi_ax3600=y" >> .config
+          # Enable dnsmasq-full package with IPSet support, disable default dnsmasq
+          echo "CONFIG_PACKAGE_dnsmasq-full=y" >> .config
+          echo "CONFIG_PACKAGE_dnsmasq_full_ipset=y" >> .config
+          echo "# CONFIG_PACKAGE_dnsmasq is not set" >> .config
+          # Finalize the configuration
           make defconfig
+        # Generate .config with target/device and package selections, then finalize it
 
-          # --- Critical Configuration for dnsmasq-full with iptables ---
-          # Ensure the standard dnsmasq package is NOT selected
-          sed -i 's/CONFIG_PACKAGE_dnsmasq=y/# CONFIG_PACKAGE_dnsmasq is not set/'.config
-          # Select the dnsmasq-full package variant
-          echo "CONFIG_PACKAGE_dnsmasq-full=y" >>.config
-          # Explicitly enable iptables support
-          # NOTE: Verify the exact Kconfig symbol in the target OpenWrt 24.10 branch source code
-          #       (e.g., in package/network/services/dnsmasq/Makefile or Kconfig)
-          echo "CONFIG_PACKAGE_DNSMASQ_FULL_IPTABLES=y" >>.config
-          # Explicitly disable nftables support to avoid conflicts [1]
-          # NOTE: Verify the exact Kconfig symbol
-          echo "# CONFIG_PACKAGE_DNSMASQ_FULL_NFTSET is not set" >>.config
-          # Explicitly disable ipset support (unless specifically required)
-          # NOTE: Verify the exact Kconfig symbol
-          echo "# CONFIG_PACKAGE_DNSMASQ_FULL_IPSET is not set" >>.config
-          # Optionally configure other dnsmasq-full features like DNSSEC
-          # echo "CONFIG_PACKAGE_DNSMASQ_FULL_DNSSEC=y" >>.config
-          # --- End of Critical Configuration ---
-
-          # Finalize the configuration: Expand dependencies, resolve conflicts
-          make defconfig # [17]
-
-          # Optional: Output the final.config for debugging purposes
-          echo "Generated.config:"
-          cat.config
-
-      # Step 5: Download package sources required for the build
-      - name: Download package sources
+      - name: Build and install toolchain
         run: |
-          # Download sources for kernel, toolchain, and all selected packages
-          # Use -j$(nproc) to parallelize downloads based on runner cores
-          make download -j$(nproc) # [16, 21]
+          # Create symlinks for openssl and libdeflate-gzip to avoid known build issues
+          make toolchain/clean
+          make toolchain/install
+        # Provide host tool symlinks to prevent build errors related to openssl/libdeflate
 
-      # Step 6: Compile the dnsmasq-full package
-      - name: Compile dnsmasq-full package
-        run: |
-          # Compile the specific package.
-          # Use -j1 for the first build attempt to get clearer error messages if issues occur.
-          # The package path 'package/feeds/packages/dnsmasq' is likely correct for the standard feed,
-          # but verify based on your feed setup and the output of './scripts/feeds install dnsmasq'.
-          # V=s enables verbose build output for debugging.
-          make package/feeds/packages/dnsmasq/compile V=s -j1 # [16, 26, 27, 28]
+      - name: Build dnsmasq-full package
+        run: make -j$(nproc) package/dnsmasq-full/compile V=s
+        # Compile only the dnsmasq-full package (parallel build with verbosity)
 
-      # Step 7: Upload the compiled dnsmasq-full IPK as a build artifact
-      - name: Upload dnsmasq-full IPK artifact
-        uses: actions/upload-artifact@v4 # Use v4 action [32, 33]
+      - name: Upload dnsmasq-full .ipk artifact
+        uses: actions/upload-artifact@v4
         with:
-          # Name of the artifact zip file that will be created
-          name: dnsmasq-full-ipk
-          # Path to the compiled IPK file.
-          # Format: bin/packages/<arch>/<repo>/<package>_<version>_<arch>.ipk [29]
-          # Arch: aarch64_cortex-a53 [4], Repo: likely 'base' for dnsmasq
-          # Use wildcard '*' to match the version/release string.
-          path: bin/packages/aarch64_cortex-a53/base/dnsmasq-full_*.ipk
-          # Behavior if no files are found matching the path
-          if-no-files-found: error # Fail the workflow if the IPK is not found [32]
-          # Optional: Set artifact retention period (default is repository setting or 90 days)
-          retention-days: 7 # Keep artifact for 7 days [32]
+          name: dnsmasq-full_ipk
+          path: bin/packages/**/dnsmasq-full*.ipk
+        # Upload the generated .ipk file as a workflow artifact
