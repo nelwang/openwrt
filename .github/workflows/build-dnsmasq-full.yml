@@ -48,6 +48,12 @@ jobs:
           make toolchain/clean
           make toolchain/install
         # Provide host tool symlinks to prevent build errors related to openssl/libdeflate
+      
+      - name: Compile target
+        run: |
+          # Create symlinks for openssl and libdeflate-gzip to avoid known build issues
+          make target/compile
+        # compile target
 
       - name: Build dnsmasq-full package
         run: make -j$(nproc) package/dnsmasq-full/compile V=s
