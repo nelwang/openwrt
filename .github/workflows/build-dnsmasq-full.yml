@@ -44,7 +44,11 @@ jobs:
           echo "CONFIG_PACKAGE_dnsmasq_full_nftset=y" >> .config
           # Expand minimal config to include defaults and dependencies
           make defconfig
-
+      - name: Link system OpenSSL to staging_dir
+        run: |
+          mkdir -p staging_dir/host/bin
+          ln -s $(which openssl) staging_dir/host/bin/openssl
+          
       # 5. Build only the dnsmasq-full package (with parallel jobs)
       - name: Compile dnsmasq-full package
         run: |
